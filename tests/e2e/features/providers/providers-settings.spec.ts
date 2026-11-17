@@ -1,6 +1,7 @@
 import { expect, test } from "../../core/fixtures/base.fixture";
 import type { Page } from "@playwright/test";
 import { createHTTPClientData } from "../mcp-registry/mcp-registry.data";
+import { providersApi } from "../../core/actions/api";
 
 // All describes below mutate config fields on the same shared singleton
 // "openai" provider row (concurrency, buffer size, timeouts, proxy/network
@@ -760,11 +761,12 @@ test.describe("Provider Settings", () => {
 
   // Azure honours openai_config.disable_store on its Responses requests, so its config sheet carries
   // the OpenAI Config tab. The shared e2e config has no azure provider: the test adds one when it is
-  // missing and removes what it added.
+  // missing and removes what it added. An existing azure provider is put back as it was found.
   test.describe("OpenAI Config Tab", () => {
     test("should keep Azure's Disable Store setting after a reload, turned on and then off", async ({
       providersPage,
       providerSettingsPage,
+      request,
     }) => {
       const page = providerSettingsPage.page;
       const toggle = page.getByTestId("provider-openai-disable-store-switch");
@@ -789,13 +791,23 @@ test.describe("Provider Settings", () => {
         return response.request().postDataJSON().openai_config;
       };
       let created = false;
+      let original: Record<string, unknown> | undefined;
       try {
         await providersPage.goto();
         if (!(await providersPage.providerExists("azure"))) {
           await providersPage.addKnownProviderFromDropdown("azure");
           created = true;
+        } else {
+          original = (await providersApi.get(request, "azure")) as Record<string, unknown>;
         }
         await openTab();
+        // An existing azure provider may already have Disable Store on: start from off.
+        if (await toggle.isChecked()) {
+          await toggle.click();
+          expect(await save()).toEqual({ disable_store: false });
+          await page.reload();
+          await openTab();
+        }
         await expect(toggle).not.toBeChecked();
         await toggle.click();
         expect(await save()).toEqual({ disable_store: true });
@@ -813,6 +825,12 @@ test.describe("Provider Settings", () => {
         if (created) {
           await providersPage.goto();
           await providersPage.deleteProvider("azure", { skipToastWait: true });
+        } else if (original) {
+          // The PUT keeps a field it does not carry, so send openai_config even when it was unset.
+          await providersApi.update(request, "azure", {
+            ...original,
+            openai_config: original.openai_config ?? null,
+          });
         }
       }
     });
