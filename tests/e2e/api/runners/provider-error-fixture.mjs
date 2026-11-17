@@ -108,6 +108,7 @@ const responsesFor = (body, count) => {
 
 // A streamed Responses request (stream: true) gets the same response as server-sent events: the
 // created event, the output items, then response.completed carrying the whole response and its usage.
+// The stream ends at response.completed: unlike Chat Completions, Responses sends no data: [DONE].
 const responsesStreamEvents = (response) => {
 	const events = [{ type: "response.created", response: { ...response, status: "in_progress", output: [], usage: undefined } }];
 	response.output.forEach((item, outputIndex) => {
@@ -120,7 +121,7 @@ const responsesStreamEvents = (response) => {
 		events.push({ type: "response.output_item.done", output_index: outputIndex, item });
 	});
 	events.push({ type: "response.completed", response });
-	return events.map((e, sequence) => `data: ${JSON.stringify({ ...e, sequence_number: sequence })}\n\n`).join("") + "data: [DONE]\n\n";
+	return events.map((e, sequence) => `data: ${JSON.stringify({ ...e, sequence_number: sequence })}\n\n`).join("");
 };
 
 // store-false-required and store-true-required answer only a request whose body carries exactly that

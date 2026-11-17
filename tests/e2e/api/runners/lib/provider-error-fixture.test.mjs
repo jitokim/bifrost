@@ -111,7 +111,9 @@ test("store-required models answer the matching store, streamed or not", async (
   const streamed = await post({ model: "store-false-required", store: false, stream: true, input: "hi" }, "/openai/v1/responses");
   assert.equal(streamed.status, 200);
   assert.match(streamed.headers.get("content-type"), /text\/event-stream/);
-  const events = (await streamed.text()).split("\n\n").filter((l) => l.startsWith("data: {")).map((l) => JSON.parse(l.slice(6)));
+  const frames = (await streamed.text()).split("\n\n").filter((l) => l !== "");
+  assert.ok(frames.every((l) => l.startsWith("data: {")), `every frame is a JSON event, with no [DONE]: ${JSON.stringify(frames.at(-1))}`);
+  const events = frames.map((l) => JSON.parse(l.slice(6)));
   assert.equal(events[0].type, "response.created");
   assert.ok(events.some((e) => e.type === "response.output_text.delta" && e.delta === "hello"), "the text arrives as a delta");
   const last = events.at(-1);
